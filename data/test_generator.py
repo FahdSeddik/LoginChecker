@@ -46,47 +46,63 @@ def test_small_dataset():
         storage.store_usernames(generator, TEST_COUNT, BATCH_SIZE)
 
         # Test reader
-        reader = UsernameReader(test_file)
+        with UsernameReader(test_file) as reader:
+            # Verify count
+            assert len(reader) == TEST_COUNT, (
+                f"Expected {TEST_COUNT}, got {len(reader)}"
+            )
+            print(f"[OK] Count verification passed: {len(reader):,} usernames")
 
-        # Verify count
-        assert len(reader) == TEST_COUNT, f"Expected {TEST_COUNT}, got {len(reader)}"
-        print(f"[OK] Count verification passed: {len(reader):,} usernames")
+            # Test random access
+            first_username = reader[0]
+            last_username = reader[-1]
+            middle_username = reader[TEST_COUNT // 2]
 
-        # Test random access
-        first_username = reader[0]
-        last_username = reader[-1]
-        middle_username = reader[TEST_COUNT // 2]
+            print("[OK] Random access test passed:")
+            print(f"  First: {first_username}")
+            print(f"  Middle: {middle_username}")
+            print(f"  Last: {last_username}")
 
-        print("[OK] Random access test passed:")
-        print(f"  First: {first_username}")
-        print(f"  Middle: {middle_username}")
-        print(f"  Last: {last_username}")
+            # Test O(1) access performance
+            import time
 
-        # Test iteration
-        iteration_count = 0
-        for _ in reader.iter_usernames(0, 10):
-            iteration_count += 1
-        assert iteration_count == 10, f"Expected 10, got {iteration_count}"
-        print("[OK] Iteration test passed")
+            indices = [0, 1000, 50000, 90000, TEST_COUNT - 1]
+            start_time = time.time()
+            for idx in indices:
+                _ = reader[idx]  # Just testing access time, not using the result
+            access_time = time.time() - start_time
+            print(
+                f"[OK] O(1) access test: 5 random reads in {access_time * 1000:.2f}ms"
+            )
 
-        # Test batch iteration
-        batch_count = 0
-        total_in_batches = 0
-        for batch in reader.iter_batch(1000, 0, 5000):
-            batch_count += 1
-            total_in_batches += len(batch)
-        assert total_in_batches == 5000, f"Expected 5000, got {total_in_batches}"
-        print(f"[OK] Batch iteration test passed: {batch_count} batches")
+            # Test iteration
+            iteration_count = 0
+            for _ in reader.iter_usernames(0, 10):
+                iteration_count += 1
+            assert iteration_count == 10, f"Expected 10, got {iteration_count}"
+            print("[OK] Iteration test passed")
 
-        # Show stats
-        stats = reader.get_stats()
-        print("[OK] Dataset stats:")
-        print(f"  Total usernames: {stats['total_usernames']:,}")
-        print(f"  Data file: {stats['data_file_size'] / 1024**2:.1f} MB")
-        print(f"  Index file: {stats['index_file_size'] / 1024:.1f} KB")
-        print(f"  Avg length: {stats['avg_username_length']:.1f} chars")
+            # Test batch iteration
+            batch_count = 0
+            total_in_batches = 0
+            for batch in reader.iter_batch(1000, 0, 5000):
+                batch_count += 1
+                total_in_batches += len(batch)
+            assert total_in_batches == 5000, f"Expected 5000, got {total_in_batches}"
+            print(f"[OK] Batch iteration test passed: {batch_count} batches")
 
-        print("\n[OK] All tests passed! Generator and reader working correctly.")
+            # Show stats
+            stats = reader.get_stats()
+            print("[OK] Dataset stats:")
+            print(f"  Total usernames: {stats['total_usernames']:,}")
+            print(f"  Data file: {stats['data_file_size'] / 1024**2:.1f} MB")
+            print(f"  Index file: {stats['index_file_size'] / 1024:.1f} KB")
+            print(
+                f"  Index entries: {stats['index_entries']:,} ({stats['index_entry_size']} bytes each)"
+            )
+            print(f"  Avg length: {stats['avg_username_length']:.1f} chars")
+
+            print("\n[OK] All tests passed! Generator and reader working correctly.")
 
         # Clean up test files
         test_file.unlink()

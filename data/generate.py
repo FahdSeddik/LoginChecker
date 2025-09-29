@@ -44,7 +44,7 @@ class UsernameGenerator:
 
 
 class EfficientUsernameStorage:
-    """Stores usernames in an efficient binary format with length-only index."""
+    """Stores usernames in an efficient binary format with cumulative position index."""
 
     def __init__(self, filepath: Path):
         self.filepath = filepath
@@ -53,7 +53,7 @@ class EfficientUsernameStorage:
     def store_usernames(
         self, generator: UsernameGenerator, total_count: int, batch_size: int = 100_000
     ) -> None:
-        """Store usernames in binary format with length index for sequential access."""
+        """Store usernames in binary format with cumulative position index for random access."""
 
         print(f"Generating {total_count:,} usernames...")
         start_time = time.time()
@@ -62,6 +62,8 @@ class EfficientUsernameStorage:
             open(self.filepath, "wb") as data_file,
             open(self.index_filepath, "wb") as index_file,
         ):
+            cumulative_position = 0
+
             for batch_start in range(0, total_count, batch_size):
                 batch_end = min(batch_start + batch_size, total_count)
                 current_batch_size = batch_end - batch_start
@@ -74,11 +76,14 @@ class EfficientUsernameStorage:
                     username_bytes = username.encode("utf-8")
                     length = len(username_bytes)
 
-                    # Write to index: length (1 byte)
-                    index_file.write(struct.pack("<B", length))
+                    # Write to index: cumulative position (8 bytes, unsigned 64-bit integer)
+                    index_file.write(struct.pack("<Q", cumulative_position))
 
                     # Write username to data file
                     data_file.write(username_bytes)
+
+                    # Update cumulative position
+                    cumulative_position += length
 
                 # Progress update
                 if batch_start % (batch_size * 10) == 0:
@@ -103,6 +108,7 @@ class EfficientUsernameStorage:
         index_size = self.index_filepath.stat().st_size
         print(f"Data file: {data_size:,} bytes ({data_size / 1024**3:.2f} GB)")
         print(f"Index file: {index_size:,} bytes ({index_size / 1024**2:.2f} MB)")
+        print(f"Index entries: {index_size // 8:,} (8 bytes per entry)")
 
 
 def main():
