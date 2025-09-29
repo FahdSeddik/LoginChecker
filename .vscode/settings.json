@@ -1,7 +1,15 @@
 {
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
-        "source.fixAll": "always"
+        "source.fixAll": "always",
+        "source.organizeImports": "always"
+    },
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.codeActionsOnSave": {
+            "source.fixAll": "always",
+            "source.organizeImports": "always"
+        }
     },
     "python.testing.pytestArgs": [
         "tests"
