@@ -6,4 +6,18 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "mimesis>=18.0.0",
+    "pytest>=8.4.2",
 ]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers"
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
