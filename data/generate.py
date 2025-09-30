@@ -92,7 +92,7 @@ class EfficientUsernameStorage:
                     eta = (total_count - batch_end) / rate if rate > 0 else 0
                     print(
                         f"Progress: {batch_end:,}/{total_count:,} "
-                        f"({100 * batch_end / total_count:.1f}%) - "
+                        f"({100 * batch_end / total_count if total_count > 0 else 0:.1f}%) - "
                         f"Rate: {rate:,.0f} usernames/sec - "
                         f"ETA: {eta:.0f}s"
                     )
@@ -100,7 +100,7 @@ class EfficientUsernameStorage:
         elapsed = time.time() - start_time
         print(
             f"Generation complete! {total_count:,} usernames in {elapsed:.1f}s "
-            f"({total_count / elapsed:,.0f} usernames/sec)"
+            f"({total_count / elapsed if elapsed > 0 else 0:,.0f} usernames/sec)"
         )
 
         # Print file sizes

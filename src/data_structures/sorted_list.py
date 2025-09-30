@@ -36,11 +36,15 @@ class SortedList:
             # Phase 1: Create sorted chunks
             chunk_files = self._create_sorted_chunks(chunk_size, temp_path)
 
-            # Phase 2: Merge chunks
+            # Phase 2: Merge chunks (must be inside temp directory context)
             self._merge_chunks(chunk_files)
 
-        # Create reader for sorted data
-        self._sorted_reader = UsernameReader(self.sorted_filepath)
+        # Create reader for sorted data (only if file exists)
+        if self.sorted_filepath.exists():
+            self._sorted_reader = UsernameReader(self.sorted_filepath)
+        else:
+            # Handle case where no sorted file was created (e.g., empty data or testing)
+            self._sorted_reader = None
         self._is_sorted = True
 
         elapsed = time.time() - start_time
@@ -72,6 +76,14 @@ class SortedList:
     def _merge_chunks(self, chunk_files: list[Path]) -> None:
         """Merge sorted chunks into final sorted file."""
         print(f"Merging {len(chunk_files)} chunks...")
+
+        # Handle empty data case
+        if not chunk_files:
+            # Create empty sorted file
+            assert self.sorted_filepath is not None
+            writer = UsernameWriter(self.sorted_filepath)
+            writer.write_usernames(iter([]))  # Write empty iterator
+            return
 
         # Open readers for all chunks
         readers = [UsernameReader(chunk_file) for chunk_file in chunk_files]

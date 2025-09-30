@@ -24,10 +24,15 @@ class UsernameReader:
 
         # Open data file with memory mapping for efficient access
         self._data_file = open(self.filepath, "rb")
-        self._mmapped_data = mmap.mmap(
-            self._data_file.fileno(), 0, access=mmap.ACCESS_READ
-        )
-        self.eof_idx = len(self._mmapped_data)
+        data_file_size = self.filepath.stat().st_size
+        if data_file_size > 0:
+            self._mmapped_data = mmap.mmap(
+                self._data_file.fileno(), 0, access=mmap.ACCESS_READ
+            )
+            self.eof_idx = len(self._mmapped_data)
+        else:
+            self._mmapped_data = None
+            self.eof_idx = 0
 
     def _load_index(self) -> None:
         """Load the cumulative position index into memory efficiently, avoiding crashes for large files."""
@@ -38,9 +43,12 @@ class UsernameReader:
 
         # Use memory mapping for the index file to avoid loading all into RAM
         self._index_file = open(self.index_filepath, "rb")
-        self._mmapped_index = mmap.mmap(
-            self._index_file.fileno(), 0, access=mmap.ACCESS_READ
-        )
+        if index_size > 0:
+            self._mmapped_index = mmap.mmap(
+                self._index_file.fileno(), 0, access=mmap.ACCESS_READ
+            )
+        else:
+            self._mmapped_index = None
 
         class PositionsProxy:
             def __init__(self, mmapped_index, count):
@@ -50,6 +58,8 @@ class UsernameReader:
             def __getitem__(self, idx):
                 if not 0 <= idx < self.count:
                     raise IndexError(f"Index {idx} out of range [0, {self.count})")
+                if self.mmapped_index is None:
+                    raise IndexError("No data available in empty file")
                 offset = idx * 8
                 return struct.unpack_from("<Q", self.mmapped_index, offset)[0]
 
@@ -95,6 +105,10 @@ class UsernameReader:
 
         if not 0 <= index < effective_count:
             raise IndexError(f"Index {index} out of range [0, {effective_count})")
+
+        # Handle empty file case
+        if self._mmapped_data is None:
+            raise IndexError("Cannot access data in empty file")
 
         # Get start and end positions
         start_pos = self.positions[index]
@@ -196,8 +210,12 @@ class UsernameReader:
 
     def close(self) -> None:
         """Close the memory-mapped file and data file."""
-        if hasattr(self, "_mmapped_data"):
+        if hasattr(self, "_mmapped_data") and self._mmapped_data is not None:
             self._mmapped_data.close()
+        if hasattr(self, "_mmapped_index") and self._mmapped_index is not None:
+            self._mmapped_index.close()
+        if hasattr(self, "_index_file"):
+            self._index_file.close()
         if hasattr(self, "_data_file"):
             self._data_file.close()
 
