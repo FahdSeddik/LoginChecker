@@ -20,6 +20,8 @@ FLAG_TOMBSTONE = 2
 
 
 # From: https://gist.github.com/ruby0x1/81308642d0325fd386237cfa3b44785c#file-hash_fnv1a-h-L25
+# http://isthe.com/chongo/tech/comp/fnv/#FNV-1a
+# https://stackoverflow.com/questions/11413860/best-string-hashing-function-for-short-filenames
 def fnv1a_64(data: bytes) -> int:
     # 64-bit FNV-1a
     h = 0xCBF29CE484222325
