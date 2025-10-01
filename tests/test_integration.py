@@ -119,12 +119,15 @@ class TestIntegrationWorkflows:
     def test_hashset_workflow(self):
         """Test workflow with disk hashset."""
         # Step 1: Generate usernames
-        generator = UsernameGenerator(seed=456)
+        seed = 456
+        generator = UsernameGenerator(seed=seed)
         usernames = list(generator.generate_batch(200))
 
         # Step 2: Create and populate hashset
         hashset_path = str(Path(self.temp_dir) / "workflow_hashset.dat")
-        hashset = DiskHashSet(hashset_path, num_slots_power=8, create=True)  # 256 slots
+        hashset = DiskHashSet(
+            hashset_path, num_slots_power=8, create=True, seed=seed
+        )  # 256 slots
 
         # Add all usernames
         for username in usernames:

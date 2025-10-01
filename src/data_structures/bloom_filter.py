@@ -6,13 +6,13 @@ Mathematical Foundation:
 - Bits per element: bpe = -ln(eps) / (ln(2))^2
 """
 
-import hashlib
 import math
 import mmap
 import os
-import struct
 import tempfile
 from typing import Optional, Tuple, Union
+
+import mmh3
 
 
 class BloomFilter:
@@ -45,10 +45,9 @@ class BloomFilter:
 
         self.capacity = capacity
         self.false_positive_rate = false_positive_rate
-        if isinstance(seed, int):
-            self.seed = seed.to_bytes(8, "little", signed=False)
-        else:
-            self.seed = os.urandom(8)
+        self.seed: int = (
+            seed if seed is not None else int.from_bytes(os.urandom(4), "little")
+        )
 
         self._calculate_parameters()
         self._initialize_storage(filepath)
@@ -80,14 +79,13 @@ class BloomFilter:
 
     def _initialize_storage(self, filepath: Optional[str]):
         """Initialize memory-mapped storage for the bit array."""
+        self._temp_file = None
+        self._owns_file = False
         if filepath is None:
             # Create temporary file
             self._temp_file = tempfile.NamedTemporaryFile(delete=False)
             filepath = self._temp_file.name
             self._owns_file = True
-        else:
-            self._temp_file = None
-            self._owns_file = False
 
         self.filepath = filepath
 
@@ -107,7 +105,7 @@ class BloomFilter:
 
     def _two_hashes(self, key: Union[str, bytes]) -> Tuple[int, int]:
         """
-        Generate two independent hash values using BLAKE2b.
+        Generate two independent hash values 64-bit using MurmurHash3.
         Args:
             key: The key to hash (string or bytes)
 
@@ -117,15 +115,9 @@ class BloomFilter:
         # Convert string to bytes if needed
         if isinstance(key, str):
             key = key.encode("utf-8")
-        hasher = hashlib.blake2b(key=self.seed, digest_size=16)
-        hasher.update(key)
-        digest = hasher.digest()
-
-        h1, h2 = struct.unpack_from("<QQ", digest)
-
-        # avoid the degenerate case h2 == 0 -> use h2 |= 1 (cheap & effective)
-        h2 |= 1
-
+        h1, h2 = mmh3.hash64(key, seed=self.seed)
+        if h2 == 0:
+            h2 = 0xBBCF16F89B470117  # Large 64-bit prime to avoid zero
         return h1, h2
 
     def _get_bit_positions(self, key: Union[str, bytes]) -> list[int]:

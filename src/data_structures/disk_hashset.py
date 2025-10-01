@@ -4,8 +4,11 @@
 import mmap
 import os
 import struct
+from typing import Optional
 
-HEADER_SIZE = 4096
+import mmh3
+
+HEADER_SIZE = 32  # bytes
 MAGIC = b"DHSETv1\x00"
 VERSION = 1
 SLOT_SIZE = 32  # bytes
@@ -32,17 +35,31 @@ def fnv1a_64(data: bytes) -> int:
 
 
 class DiskHashSet:
-    def __init__(self, path: str, num_slots_power: int = 20, create: bool = False):
+    def __init__(
+        self,
+        path: str,
+        num_slots_power: int = 20,
+        create: bool = False,
+        seed: Optional[int] = None,
+    ):
         """
         path: file path
         num_slots_power: use 2**num_slots_power slots (must be >= 3)
         create: if True, create new file (overwrite)
+        seed: optional seed for hash function, if None, generates random seed
         """
         assert num_slots_power >= 3
         self.path = path
         self.num_slots = 1 << num_slots_power
         self.capacity_mask = self.num_slots - 1
         self.slot_size = SLOT_SIZE
+
+        # Generate random seed if not provided
+        self.seed = (
+            seed
+            if seed is not None
+            else int.from_bytes(os.urandom(4), byteorder="little", signed=False)
+        )
 
         exists = os.path.exists(path)
         mode = "r+b"
@@ -53,9 +70,10 @@ class DiskHashSet:
                 f.truncate(fsize)
                 header = bytearray(HEADER_SIZE)
                 header[0:8] = MAGIC
-                struct.pack_into("<I", header, 8, VERSION)
-                struct.pack_into("<Q", header, 12, self.num_slots)
-                struct.pack_into("<I", header, 20, self.slot_size)
+                struct.pack_into("<B", header, 8, VERSION)
+                struct.pack_into("<Q", header, 9, self.num_slots)
+                struct.pack_into("<B", header, 17, self.slot_size)
+                struct.pack_into("<I", header, 18, self.seed)
                 f.write(header)
             mode = "r+b"
 
@@ -67,7 +85,8 @@ class DiskHashSet:
         if magic != MAGIC:
             raise ValueError("Bad file magic; wrong file or version")
         # read num_slots from file; allow opening a file with different num_slots_power
-        on_disk_slots = struct.unpack_from("<Q", self.mm, 12)[0]
+        on_disk_slots = struct.unpack_from("<Q", self.mm, 9)[0]
+        self.seed = struct.unpack_from("<I", self.mm, 18)[0]
         if on_disk_slots != self.num_slots:
             # allow opening with the file's native size, override
             self.num_slots = int(on_disk_slots)
@@ -108,7 +127,7 @@ class DiskHashSet:
 
     def contains(self, key: str) -> bool:
         kb = self._encode_key(key)
-        fp = fnv1a_64(kb)
+        fp = mmh3.hash64(kb, seed=self.seed, signed=False)[0]
         start = idx = fp & self.capacity_mask
         while True:
             flag, key_len, slot_fp, slot_kb, _ = self._read_slot(idx)
@@ -128,7 +147,7 @@ class DiskHashSet:
         Insert key. Return True if inserted, False if already present.
         """
         kb = self._encode_key(key)
-        fp = fnv1a_64(kb)
+        fp = mmh3.hash64(kb, seed=self.seed, signed=False)[0]
         start = idx = fp & self.capacity_mask
 
         while True:
@@ -145,7 +164,7 @@ class DiskHashSet:
 
     def remove(self, key: str) -> bool:
         kb = self._encode_key(key)
-        fp = fnv1a_64(kb)
+        fp = mmh3.hash64(kb, seed=self.seed, signed=False)[0]
         start = idx = fp & self.capacity_mask
         while True:
             flag, key_len, slot_fp, slot_kb, _ = self._read_slot(idx)
@@ -173,8 +192,10 @@ if __name__ == "__main__":
     path = "users_hashset.dat"
     # create new with 2**30 slots (~1.07B slots). choose power based on expected N and load factor.
     # For 1B keys you might pick 2**30 (1,073,741,824 slots) for each slot 32 bytes = 32GB file.
-    hs = DiskHashSet(path, num_slots_power=30, create=True)
+    # Using seed=12345 for deterministic behavior in this example
+    hs = DiskHashSet(path, num_slots_power=30, create=True, seed=12345)
 
+    print(f"Using seed: {hs.seed}")
     print(hs.add("alice"))  # True
     print(hs.add("alice"))  # False
     print(hs.contains("alice"))  # True

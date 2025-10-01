@@ -62,8 +62,8 @@ class TestBloomFilterInitialization:
         """Test seed parameter handling."""
         bf = BloomFilter(capacity=1000, false_positive_rate=0.1, seed=seed)
         try:
-            assert isinstance(bf.seed, bytes)
-            assert len(bf.seed) == 8
+            assert isinstance(bf.seed, int)
+            assert 0 <= bf.seed < 2**32
             if seed is not None:
                 # Test deterministic behavior with same seed
                 bf2 = BloomFilter(capacity=1000, false_positive_rate=0.1, seed=seed)

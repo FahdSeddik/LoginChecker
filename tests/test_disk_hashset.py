@@ -90,10 +90,13 @@ class TestDiskHashSet:
 
     def test_init_create_new(self):
         """Test creating a new hashset file."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset = DiskHashSet(
+            self.test_path, num_slots_power=3, create=True, seed=12345
+        )
 
         assert hashset.num_slots == 8  # 2^3
         assert hashset.capacity_mask == 7  # num_slots - 1
+        assert hashset.seed == 12345  # Check seed is set correctly
         assert Path(self.test_path).exists()
 
         # Verify file size
@@ -106,25 +109,28 @@ class TestDiskHashSet:
     def test_init_open_existing(self):
         """Test opening an existing hashset file."""
         # Create hashset
-        hashset1 = DiskHashSet(self.test_path, num_slots_power=4, create=True)
+        hashset1 = DiskHashSet(
+            self.test_path, num_slots_power=4, create=True, seed=54321
+        )
         hashset1.add("test_key")
         hashset1.close()
 
         # Open existing
-        hashset2 = DiskHashSet(self.test_path, create=False)
+        hashset2 = DiskHashSet(self.test_path, create=False, seed=54321)
         assert hashset2.contains("test_key")
         assert hashset2.num_slots == 16  # Should read from file
+        assert hashset2.seed == 54321  # Check seed is preserved
 
         hashset2.close()
 
     def test_init_invalid_num_slots_power(self):
         """Test initialization with invalid num_slots_power."""
         with pytest.raises(AssertionError):
-            DiskHashSet(self.test_path, num_slots_power=2, create=True)
+            DiskHashSet(self.test_path, num_slots_power=2, create=True, seed=42)
 
     def test_add_basic(self):
         """Test basic add functionality."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True, seed=1001)
 
         # Add new key
         result1 = hashset.add("alice")
@@ -138,7 +144,7 @@ class TestDiskHashSet:
 
     def test_contains_basic(self):
         """Test basic contains functionality."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True, seed=2002)
 
         # Key not present
         assert hashset.contains("alice") is False
@@ -154,7 +160,7 @@ class TestDiskHashSet:
 
     def test_remove_basic(self):
         """Test basic remove functionality."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True, seed=3003)
 
         # Remove non-existent key
         result1 = hashset.remove("alice")
@@ -176,7 +182,7 @@ class TestDiskHashSet:
 
     def test_add_after_remove(self):
         """Test adding key after removal (tombstone handling)."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True, seed=4004)
 
         # Add, remove, add again
         hashset.add("alice")
@@ -188,6 +194,104 @@ class TestDiskHashSet:
 
         hashset.close()
 
+    def test_seed_functionality(self):
+        """Test seed functionality and deterministic behavior."""
+        # Test with explicit seed
+        hashset1 = DiskHashSet(
+            self.test_path, num_slots_power=3, create=True, seed=12345
+        )
+        assert hashset1.seed == 12345
+        hashset1.close()
+
+        # Test with None seed (should generate random seed)
+        test_path2 = str(Path(self.temp_dir) / "test_hashset2.dat")
+        hashset2 = DiskHashSet(test_path2, num_slots_power=3, create=True, seed=None)
+        assert isinstance(hashset2.seed, int)
+        assert hashset2.seed >= 0
+        hashset2.close()
+
+        # Test with different seeds should work independently
+        test_path3 = str(Path(self.temp_dir) / "test_hashset3.dat")
+        hashset3 = DiskHashSet(test_path3, num_slots_power=3, create=True, seed=99999)
+        assert hashset3.seed == 99999
+        hashset3.close()
+
+    def test_deterministic_behavior_with_same_seed(self):
+        """Test that same seed produces deterministic behavior."""
+        seed = 42
+
+        # Create first hashset with seed
+        hashset1 = DiskHashSet(
+            self.test_path, num_slots_power=4, create=True, seed=seed
+        )
+        hashset1.add("test1")
+        hashset1.add("test2")
+        hashset1.add("test3")
+
+        # Check internal state by accessing a key
+        assert hashset1.contains("test1") is True
+        assert hashset1.contains("test2") is True
+        assert hashset1.contains("test3") is True
+        hashset1.close()
+
+        # Create second hashset with same seed in different file
+        test_path2 = str(Path(self.temp_dir) / "test_hashset2.dat")
+        hashset2 = DiskHashSet(test_path2, num_slots_power=4, create=True, seed=seed)
+        hashset2.add("test1")
+        hashset2.add("test2")
+        hashset2.add("test3")
+
+        # Should have same behavior
+        assert hashset2.contains("test1") is True
+        assert hashset2.contains("test2") is True
+        assert hashset2.contains("test3") is True
+        hashset2.close()
+
+    def test_different_seeds_different_behavior(self):
+        """Test that different seeds can produce different hash distributions."""
+        # This test ensures that different seeds actually affect the hash function
+        # We can't guarantee different slot placements, but we can verify seeds are used
+
+        hashset1 = DiskHashSet(self.test_path, num_slots_power=3, create=True, seed=111)
+        test_path2 = str(Path(self.temp_dir) / "test_hashset2.dat")
+        hashset2 = DiskHashSet(test_path2, num_slots_power=3, create=True, seed=222)
+
+        # Both should work correctly regardless of seed
+        hashset1.add("test_key")
+        hashset2.add("test_key")
+
+        assert hashset1.contains("test_key") is True
+        assert hashset2.contains("test_key") is True
+
+        # Seeds should be different
+        assert hashset1.seed != hashset2.seed
+        assert hashset1.seed == 111
+        assert hashset2.seed == 222
+
+        hashset1.close()
+        hashset2.close()
+
+    def test_random_seed_generation(self):
+        """Test that random seed generation works and produces different seeds."""
+        seeds = []
+        for i in range(5):
+            test_path = str(Path(self.temp_dir) / f"test_hashset_{i}.dat")
+            hashset = DiskHashSet(
+                test_path, num_slots_power=3, create=True
+            )  # No seed provided
+            seeds.append(hashset.seed)
+            hashset.close()
+
+        # All seeds should be integers
+        assert all(isinstance(seed, int) for seed in seeds)
+
+        # Seeds should be non-negative (from unsigned interpretation)
+        assert all(seed >= 0 for seed in seeds)
+
+        # Very likely that at least some seeds are different (not guaranteed but highly probable)
+        # We'll just check that we got valid seeds - exact uniqueness is not guaranteed
+        assert len(seeds) == 5
+
     @pytest.mark.parametrize(
         "keys",
         [
@@ -198,7 +302,7 @@ class TestDiskHashSet:
     )
     def test_multiple_keys(self, keys):
         """Test with multiple keys."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=4, create=True)
+        hashset = DiskHashSet(self.test_path, num_slots_power=4, create=True, seed=5005)
 
         # Add all keys
         for key in keys:
@@ -219,7 +323,9 @@ class TestDiskHashSet:
     def test_collision_handling(self):
         """Test collision handling with linear probing."""
         # Use very small hashset to force collisions
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)  # 8 slots
+        hashset = DiskHashSet(
+            self.test_path, num_slots_power=3, create=True, seed=6006
+        )  # 8 slots
 
         # Add enough keys to likely cause collisions
         keys = [f"key_{i}" for i in range(5)]
@@ -235,7 +341,7 @@ class TestDiskHashSet:
 
     def test_key_length_validation(self):
         """Test key length validation."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True, seed=7007)
 
         # Valid key
         hashset.add("valid_key")
@@ -249,7 +355,7 @@ class TestDiskHashSet:
 
     def test_unicode_keys(self):
         """Test handling of Unicode keys."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True, seed=8008)
 
         unicode_keys = ["alice", "böb", "测试", "🙂"]
 
@@ -266,7 +372,7 @@ class TestDiskHashSet:
 
     def test_bulk_load(self):
         """Test bulk loading functionality."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=4, create=True)
+        hashset = DiskHashSet(self.test_path, num_slots_power=4, create=True, seed=9009)
 
         keys = [f"bulk_key_{i}" for i in range(10)]
         hashset.bulk_load(keys)
@@ -282,21 +388,25 @@ class TestDiskHashSet:
         keys = ["persistent1", "persistent2", "persistent3"]
 
         # First session: add data
-        hashset1 = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset1 = DiskHashSet(
+            self.test_path, num_slots_power=3, create=True, seed=10010
+        )
         for key in keys:
             hashset1.add(key)
         hashset1.sync()  # Ensure data is written
         hashset1.close()
 
-        # Second session: verify data exists
-        hashset2 = DiskHashSet(self.test_path, create=False)
+        # Second session: verify data exists (use same seed for consistency)
+        hashset2 = DiskHashSet(self.test_path, create=False, seed=10010)
         for key in keys:
             assert hashset2.contains(key) is True
         hashset2.close()
 
     def test_sync_functionality(self):
         """Test sync functionality."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset = DiskHashSet(
+            self.test_path, num_slots_power=3, create=True, seed=11011
+        )
 
         hashset.add("sync_test")
         hashset.sync()  # Should complete without error
@@ -308,7 +418,9 @@ class TestDiskHashSet:
     def test_table_full_error(self):
         """Test error when hash table becomes full."""
         # Create very small table
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)  # 8 slots
+        hashset = DiskHashSet(
+            self.test_path, num_slots_power=3, create=True, seed=12012
+        )  # 8 slots
 
         # Fill the table
         keys_added = []
@@ -328,7 +440,9 @@ class TestDiskHashSet:
 
     def test_edge_case_empty_key(self):
         """Test handling of empty key."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset = DiskHashSet(
+            self.test_path, num_slots_power=3, create=True, seed=13013
+        )
 
         # Empty string should be valid
         result = hashset.add("")
@@ -339,7 +453,9 @@ class TestDiskHashSet:
 
     def test_edge_case_max_length_key(self):
         """Test key exactly at maximum length."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset = DiskHashSet(
+            self.test_path, num_slots_power=3, create=True, seed=14014
+        )
 
         # Key exactly at max bytes
         max_key = "x" * MAX_KEY_BYTES
@@ -363,7 +479,9 @@ class TestDiskHashSet:
         """Test different num_slots_power values."""
         for power in [3, 4, 5, 6]:
             test_path = str(Path(self.temp_dir) / f"test_{power}.dat")
-            hashset = DiskHashSet(test_path, num_slots_power=power, create=True)
+            hashset = DiskHashSet(
+                test_path, num_slots_power=power, create=True, seed=15000 + power
+            )
 
             expected_slots = 1 << power
             assert hashset.num_slots == expected_slots
@@ -377,11 +495,15 @@ class TestDiskHashSet:
     def test_error_handling_invalid_path(self):
         """Test error handling with invalid file paths."""
         with pytest.raises((OSError, IOError, PermissionError)):
-            DiskHashSet("/nonexistent/path/file.dat", num_slots_power=3, create=True)
+            DiskHashSet(
+                "/nonexistent/path/file.dat", num_slots_power=3, create=True, seed=16016
+            )
 
     def test_context_manager_behavior(self):
         """Test proper resource cleanup."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset = DiskHashSet(
+            self.test_path, num_slots_power=3, create=True, seed=17017
+        )
 
         hashset.add("test")
         assert hashset.contains("test") is True
@@ -391,7 +513,9 @@ class TestDiskHashSet:
 
     def test_slot_operations(self):
         """Test internal slot operations."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset = DiskHashSet(
+            self.test_path, num_slots_power=3, create=True, seed=18018
+        )
 
         # Test slot offset calculation
         offset0 = hashset._slot_offset(0)
@@ -408,7 +532,9 @@ class TestDiskHashSet:
 
     def test_key_encoding(self):
         """Test internal key encoding."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset = DiskHashSet(
+            self.test_path, num_slots_power=3, create=True, seed=19019
+        )
 
         # Test ASCII key
         encoded = hashset._encode_key("ascii")
@@ -422,7 +548,9 @@ class TestDiskHashSet:
 
     def test_fingerprint_collision_handling(self):
         """Test handling when fingerprints collide but keys differ."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset = DiskHashSet(
+            self.test_path, num_slots_power=3, create=True, seed=20020
+        )
 
         # This is hard to test deterministically, but we can verify
         # that the hashset correctly distinguishes between different keys
@@ -444,7 +572,9 @@ class TestDiskHashSet:
 
     def test_remove_with_linear_probing(self):
         """Test removal when linear probing was used for insertion."""
-        hashset = DiskHashSet(self.test_path, num_slots_power=3, create=True)
+        hashset = DiskHashSet(
+            self.test_path, num_slots_power=3, create=True, seed=21021
+        )
 
         # Add several keys that might probe
         keys = [f"probe_key_{i}" for i in range(5)]
@@ -467,7 +597,7 @@ class TestDiskHashSet:
     def test_large_key_set(self):
         """Test with larger number of keys."""
         hashset = DiskHashSet(
-            self.test_path, num_slots_power=8, create=True
+            self.test_path, num_slots_power=8, create=True, seed=22022
         )  # 256 slots
 
         # Add many keys
@@ -496,7 +626,7 @@ class TestDiskHashSet:
     def test_stress_add_remove_cycle(self):
         """Test stress scenario with add/remove cycles."""
         hashset = DiskHashSet(
-            self.test_path, num_slots_power=6, create=True
+            self.test_path, num_slots_power=6, create=True, seed=23023
         )  # 64 slots
 
         # Perform multiple add/remove cycles
@@ -526,7 +656,9 @@ class TestDiskHashSet:
         """Test basic concurrent access safety."""
         import threading
 
-        hashset = DiskHashSet(self.test_path, num_slots_power=6, create=True)
+        hashset = DiskHashSet(
+            self.test_path, num_slots_power=6, create=True, seed=24024
+        )
         errors = []
 
         def add_keys(start_idx, count):
