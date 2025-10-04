@@ -25,14 +25,13 @@ class UsernameReader:
         # Open data file with memory mapping for efficient access
         self._data_file = open(self.filepath, "rb")
         data_file_size = self.filepath.stat().st_size
+        self._mmapped_data = None
+        self.eof_idx = 0
         if data_file_size > 0:
             self._mmapped_data = mmap.mmap(
                 self._data_file.fileno(), 0, access=mmap.ACCESS_READ
             )
             self.eof_idx = len(self._mmapped_data)
-        else:
-            self._mmapped_data = None
-            self.eof_idx = 0
 
     def _load_index(self) -> None:
         """Load the cumulative position index into memory efficiently, avoiding crashes for large files."""
@@ -43,12 +42,11 @@ class UsernameReader:
 
         # Use memory mapping for the index file to avoid loading all into RAM
         self._index_file = open(self.index_filepath, "rb")
+        self._mmapped_index = None
         if index_size > 0:
             self._mmapped_index = mmap.mmap(
                 self._index_file.fileno(), 0, access=mmap.ACCESS_READ
             )
-        else:
-            self._mmapped_index = None
 
         class PositionsProxy:
             def __init__(self, mmapped_index, count):

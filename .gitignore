@@ -12,3 +12,7 @@ wheels/
 # Databases
 *.dat
 *.idx
+
+# report
+*.aux
+*.log
