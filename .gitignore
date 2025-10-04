@@ -16,3 +16,4 @@ wheels/
 # report
 *.aux
 *.log
+*.out
