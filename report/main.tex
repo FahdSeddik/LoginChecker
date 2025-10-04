@@ -346,13 +346,6 @@ Disk Hash & \textbf{2.7} & \textbf{2.2} & \textbf{2.4} & \textbf{2.5} & \textbf{
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=0.95\linewidth]{efficiency-comparison}
-\caption{Algorithm efficiency comparison with normalized metrics. O(1) algorithms show flat performance while O(log n) algorithms are normalized by log n.}
-\label{fig:efficiency-comparison}
-\end{figure}
-
-\begin{figure}[h]
-\centering
 \includegraphics[width=0.95\linewidth]{bloom-filter-scaling}
 \caption{Bloom filter scaling analysis: (left) search time remains consistent across all scales, (right) memory usage scales linearly with dataset size through memory-mapped storage.}
 \label{fig:bloom-scaling}
@@ -367,7 +360,7 @@ Based on my experimental validation (Tables~\ref{tab:linear-results}--\ref{tab:c
 \item \textbf{Bloom filter:} Successfully scaled to 1 billion elements (Table~\ref{tab:bloom-results}). Search time remained under 6$\mu$s for most scales, with detailed scaling analysis shown in Figure~\ref{fig:bloom-scaling}.
 \item \textbf{Cuckoo filter:} Consistent performance up to 10M elements with search times around 3$\mu$s (Table~\ref{tab:cuckoo-results}). The implementation used bucket size 4, target load factor 95\%, and maximum 500 kicks per insertion. While billion-scale experiments were not conducted due to time constraints (setup time for 1B elements is substantial), the O(1) algorithmic complexity and memory-mapped architecture theoretically support such scaling. At larger tested scales, insertion failures became significant: 50M elements experienced 2.5M insertion failures, while 100M elements had 5M insertion failures, demonstrating load factor management challenges.
 \end{itemize}
-\textbf{Key insight:} The disk-based implementation choice proved crucial for billion-scale experiments, allowing algorithms to handle datasets far exceeding available RAM through efficient memory mapping. Figure~\ref{fig:efficiency-comparison} illustrates the relative efficiency of each algorithm across different scales.
+\textbf{Key insight:} The disk-based implementation choice proved crucial for billion-scale experiments, allowing algorithms to handle datasets far exceeding available RAM through efficient memory mapping.
 
 \textbf{Memory behavior observations:} The binary search memory measurements (Table~\ref{tab:binary-results}) show what appears to be nearly constant memory usage on a logarithmic scale, which reflects the RSS (Resident Set Size) memory measurement capturing data actively loaded into RAM from disk-based storage. As binary search accesses different portions of the sorted dataset through memory-mapped files, the OS loads relevant pages into memory, resulting in memory growth that follows the logarithmic access pattern of the algorithm. This behavior demonstrates that memory usage scales logarithmically with dataset size, corresponding to the portions of the dataset actively accessed during search operations rather than the entire dataset being held in memory simultaneously. Note that binary search is theoretically $\Theta(1)$ space complexity if we continuously flush back loaded pages to maintain constant memory usage, but since my implementation does not perform explicit page flushing, we observe this logarithmic memory growth pattern as accessed pages accumulate in RAM.
 
